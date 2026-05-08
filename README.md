@@ -80,6 +80,48 @@ python .\run_bot.py backtest --csv data\sample_candles.csv --model models\trend_
 python .\run_bot.py live --asset EURUSD --model models\EURUSD_1m_model.json
 ```
 
+### Guía paso a paso para ejecutar en demo
+
+1. Instala dependencias:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+2. Duplica el ejemplo de variables de entorno:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+3. Edita `.env` con tus credenciales de IQ Option.
+
+4. Verifica activos abiertos en demo:
+
+```powershell
+python .\run_bot.py markets --balance PRACTICE --option-type turbo
+```
+
+5. Si deseas usar un modelo entrenado, entrena o carga uno disponible:
+
+```powershell
+python .\run_bot.py train --csv data\sample_candles.csv --model models\trend_model.json
+```
+
+6. Ejecuta el bot en demo con órdenes simuladas:
+
+```powershell
+python .\run_bot.py live --asset EURUSD --model models\EURUSD_1m_model.json --balance PRACTICE --execute --amount 1 --max-trades 3 --expiry-candles 5 --signal-lookback 20
+```
+
+7. Para recibir señales por Telegram, habilita `.env` y ejecuta:
+
+```powershell
+python .\run_bot.py signals --asset EURUSD-OTC --model models\EURUSD_OTC_1m_5000_model.json --balance PRACTICE --telegram --signal-lookback 15 --expiry-candles 2 --min-model-probability 0.55 --min-score 70
+```
+
+> Nota: El bot solo enviará órdenes a IQ Option cuando uses `--execute` y `--balance PRACTICE`. Sin `--execute` solo analiza y muestra señales.
+
 ### Señales por consola o CSV
 
 ```powershell
