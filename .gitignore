@@ -1,0 +1,26 @@
+# Credenciales locales
+.env
+
+# Datos historicos y artefactos generados
+data/*.csv
+models/*.json
+!models/EURUSD_OTC_1m_5000_model.json
+logs/*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

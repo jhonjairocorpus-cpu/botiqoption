@@ -1,0 +1,2 @@
+# Dependencias opcionales. El nucleo del backtest usa solo libreria estandar.
+iqoptionapi

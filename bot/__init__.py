@@ -1,0 +1,2 @@
+"""Quant bot research package."""
+
