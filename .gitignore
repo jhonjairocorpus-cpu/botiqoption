@@ -10,6 +10,8 @@ logs/*.csv
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -18,6 +20,11 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# Logs y bases de datos locales
+*.log
+*.sqlite3
+*.db
 
 # Sistema / editor
 .DS_Store

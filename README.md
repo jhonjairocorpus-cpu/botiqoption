@@ -1,125 +1,51 @@
 # Bot cuantitativo para IQ Option
 
-Base en Python para investigar estrategias antes de operar dinero real. Incluye:
+Bot en Python para evaluar estrategias antes de operar dinero real. Incluye:
 
-- Bandas de Bollinger.
-- MACD.
-- EMA de 200 periodos como filtro de tendencia.
-- Backtest sobre archivos CSV.
-- Entrenamiento simple con regresion logistica para estimar la probabilidad de la siguiente vela.
-- Descarga historica opcional desde IQ Option si instalas `iqoptionapi`.
+- Indicadores técnicos: Bandas de Bollinger, MACD y EMA 200.
+- Filtro de tendencia con EMA de 200 periodos.
+- Backtest con datos CSV.
+- Señales y modo live/demo.
+- Opcional: integración con Telegram y descarga histórica.
 
-> Nota: IQ Option no ofrece una API publica oficial estable para retail. Este proyecto deja la conexion real aislada para que primero puedas probar con datos historicos y cuenta demo.
+> Este proyecto está pensado para pruebas y desarrollo. No es una garantía de resultados y no debe usarse con capital real sin una validación exhaustiva.
 
-## Estructura del CSV
+## Características
 
-El bot espera columnas:
+- Solo toma operaciones en la dirección de la tendencia general (EMA 200).
+- Usa cruces de MACD y toques de bandas de Bollinger para confirmar entrada.
+- Permite análisis multi-temporalidad para señales más robustas.
+- Genera logs de señales y respaldo de datos.
+- Incluye un archivo `.gitignore` que evita subir credenciales, datos históricos y artefactos generados.
 
-```csv
-timestamp,open,high,low,close,volume
-```
+## Requisitos
 
-`timestamp` puede ser Unix epoch o texto tipo `2026-05-08 10:00:00`.
+- Python 3.10 o superior.
+- Dependencias en `requirements.txt`.
 
-## Uso rapido
-
-Generar datos de muestra:
-
-```powershell
-python .\run_bot.py generate-sample --output data\sample_candles.csv --rows 600
-```
-
-Backtest:
+Instalación:
 
 ```powershell
-python .\run_bot.py backtest --csv data\sample_candles.csv
+python -m pip install -r requirements.txt
 ```
 
-Entrenar modelo:
+## Estructura del proyecto
 
-```powershell
-python .\run_bot.py train --csv data\sample_candles.csv --model models\trend_model.json
-```
+- `bot/` — código principal del bot.
+- `data/` — datos históricos y CSV de velas.
+- `models/` — modelos JSON generados.
+- `run_bot.py`, `main.py` — entradas para ejecutar funciones del bot.
+- `.env.example` — ejemplo de variables de entorno.
 
-Backtest usando el filtro del modelo:
+## Configuración
 
-```powershell
-python .\run_bot.py backtest --csv data\sample_candles.csv --model models\trend_model.json
-```
-
-Modo en vivo sin enviar ordenes:
-
-```powershell
-python .\run_bot.py live --asset EURUSD --model models\EURUSD_1m_model.json
-```
-
-Modo demo enviando ordenes a IQ Option:
-
-```powershell
-python .\run_bot.py live --asset EURUSD --model models\EURUSD_1m_model.json --balance PRACTICE --execute --amount 1 --max-trades 3
-```
-
-No uses `--balance REAL` hasta validar la estrategia con muchos datos y varias sesiones demo.
-
-Modo senales por consola y CSV:
-
-```powershell
-python .\run_bot.py signals --asset EURUSD-OTC --model models\EURUSD_OTC_1m_5000_model.json --signal-lookback 15 --expiry-candles 2 --min-model-probability 0.55
-```
-
-Modo senales con Telegram:
-
-1. Crea un bot hablando con `@BotFather` en Telegram.
-2. Copia el token en `.env` como `TELEGRAM_BOT_TOKEN`.
-3. Agrega tu chat id como `TELEGRAM_CHAT_ID`.
-4. Ejecuta:
-
-```powershell
-python .\run_bot.py signals --asset EURUSD-OTC --model models\EURUSD_OTC_1m_5000_model.json --telegram --signal-lookback 15 --expiry-candles 2 --min-model-probability 0.55
-```
-
-Las senales se guardan en `logs/signals.csv`. Puedes completar la columna `manual_result` con `WIN`, `LOSS` o `SKIP` para evaluar tus entradas manuales.
-
-Por defecto el bot de senales usa analisis multi temporalidad:
-
-- `--timeframe 60`: entrada en 1 minuto.
-- `--confirmation-timeframe 300`: confirmacion en 5 minutos.
-- `--context-timeframe 900`: contexto en 15 minutos.
-- `--min-score 70`: solo envia senales moderadas o fuertes.
-
-Ejemplo mas explicito:
-
-```powershell
-python .\run_bot.py signals --asset EURUSD-OTC --model models\EURUSD_OTC_1m_5000_model.json --telegram --timeframe 60 --confirmation-timeframe 300 --context-timeframe 900 --signal-lookback 15 --expiry-candles 2 --min-model-probability 0.55 --min-score 70
-```
-
-Atajo en Windows:
-
-```powershell
-.\signals_eurusd_otc.bat
-```
-
-Atajo Python:
-
-```powershell
-python main.py
-```
-
-## Descargar historico de IQ Option
-
-Instala dependencias opcionales:
-
-```powershell
-pip install -r requirements.txt
-```
-
-Configura credenciales copiando `.env.example` a `.env`:
+Copia el archivo de ejemplo y actualiza tus credenciales locales:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Luego edita `.env`:
+Edita `.env` con tus datos:
 
 ```env
 IQOPTION_EMAIL=tu@email.com
@@ -128,26 +54,79 @@ TELEGRAM_BOT_TOKEN=token_de_botfather
 TELEGRAM_CHAT_ID=tu_chat_id
 ```
 
-`.env` esta ignorado por Git para no versionar tus credenciales.
+## Uso rápido
 
-Descarga velas:
+### Backtest con datos históricos
+
+```powershell
+python .\run_bot.py backtest --csv data\sample_candles.csv
+```
+
+### Entrenar un modelo
+
+```powershell
+python .\run_bot.py train --csv data\sample_candles.csv --model models\trend_model.json
+```
+
+### Backtest con modelo
+
+```powershell
+python .\run_bot.py backtest --csv data\sample_candles.csv --model models\trend_model.json
+```
+
+### Modo en vivo (demo)
+
+```powershell
+python .\run_bot.py live --asset EURUSD --model models\EURUSD_1m_model.json
+```
+
+### Señales por consola o CSV
+
+```powershell
+python .\run_bot.py signals --asset EURUSD-OTC --model models\EURUSD_OTC_1m_5000_model.json --signal-lookback 15 --expiry-candles 2 --min-model-probability 0.55
+```
+
+### Señales con Telegram
+
+```powershell
+python .\run_bot.py signals --asset EURUSD-OTC --model models\EURUSD_OTC_1m_5000_model.json --telegram --signal-lookback 15 --expiry-candles 2 --min-model-probability 0.55
+```
+
+### Descargar datos de IQ Option (opcional)
 
 ```powershell
 python .\run_bot.py fetch-iq --asset EURUSD --timeframe 60 --count 1000 --output data\EURUSD_1m.csv
 ```
 
-## Logica inicial
+## Formato CSV esperado
 
-Compra/CALL:
+El bot lee archivos CSV con columnas:
 
-- Precio sobre EMA 200.
-- MACD cruza hacia arriba su senal.
-- Precio toca o rompe la banda inferior de Bollinger.
+```csv
+timestamp,open,high,low,close,volume
+```
 
-Venta/PUT:
+`timestamp` puede ser un Unix epoch o una fecha como `2026-05-08 10:00:00`.
 
-- Precio bajo EMA 200.
-- MACD cruza hacia abajo su senal.
-- Precio toca o rompe la banda superior de Bollinger.
+## Lógica de trading
 
-Si se usa modelo entrenado, la senal debe superar la probabilidad minima configurada.
+### Compra/CALL
+
+- El precio está por encima de la EMA 200.
+- El MACD cruza hacia arriba su señal.
+- El precio toca o rompe la banda inferior de Bollinger.
+
+### Venta/PUT
+
+- El precio está por debajo de la EMA 200.
+- El MACD cruza hacia abajo su señal.
+- El precio toca o rompe la banda superior de Bollinger.
+
+Si se usa un modelo entrenado, la señal debe superar la probabilidad mínima configurada.
+
+## Advertencia
+
+- Este repositorio es para investigación y pruebas.
+- Usa primero datos históricos y cuenta demo.
+- Nunca operes en real sin validar completamente tu estrategia.
+- No es consejo financiero.
