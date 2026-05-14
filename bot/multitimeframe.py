@@ -42,7 +42,7 @@ def analyze_timeframe(candles: List[Candle], config: StrategyConfig, label: str)
         macd_above_signal = macd_value > signal_value
 
     band_width = None
-    if upper[index] is not None and lower[index] is not None:
+    if close != 0 and upper[index] is not None and lower[index] is not None:
         band_width = (upper[index] - lower[index]) / close  # type: ignore[operator]
 
     if ema_value is None or macd_above_signal is None:

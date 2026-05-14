@@ -33,8 +33,12 @@ def build_features_at(candles: List[Candle], index: int, config: StrategyConfig)
 
     close = closes[index]
     previous_close = closes[index - 1]
-    band_width = (upper[index] - lower[index]) / close  # type: ignore[operator]
-    band_position = (close - lower[index]) / (upper[index] - lower[index])  # type: ignore[operator]
+    band_range = upper[index] - lower[index]  # type: ignore[operator]
+    if close == 0 or previous_close == 0 or band_range == 0:
+        return None
+
+    band_width = band_range / close
+    band_position = (close - lower[index]) / band_range  # type: ignore[operator]
     ema_distance = (close - trend[index]) / close  # type: ignore[operator]
     macd_distance = (macd_line[index] - signal_line[index]) / close  # type: ignore[operator]
     momentum = (close - previous_close) / previous_close

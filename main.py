@@ -17,13 +17,13 @@ DEFAULT_SIGNAL_ARGS = [
     "--context-timeframe",
     "900",
     "--signal-lookback",
-    "15",
+    "10",
     "--expiry-candles",
     "2",
     "--min-model-probability",
-    "0.55",
+    "0.5",
     "--min-score",
-    "70",
+    "60",
 ]
 
 

@@ -1,4 +1,5 @@
 import csv
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -45,13 +46,18 @@ def display_strength(probability: Optional[float], score: Optional[int], strengt
     return signal_strength(probability)
 
 
+def safe_console_text(text: str) -> str:
+    encoding = sys.stdout.encoding or "utf-8"
+    return text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+
+
 def format_signal_time(timestamp: str, timeframe: int) -> tuple[str, str]:
     timezone = ZoneInfo("America/Bogota")
     try:
         candle_open = datetime.fromtimestamp(float(timestamp), timezone)
         entry_time = datetime.fromtimestamp(float(timestamp) + timeframe, timezone)
         return candle_open.strftime("%Y-%m-%d %H:%M:%S"), entry_time.strftime("%Y-%m-%d %H:%M:%S")
-    except ValueError:
+    except (OSError, OverflowError, ValueError):
         return timestamp, "proxima vela"
 
 
@@ -93,6 +99,44 @@ def format_signal_message(
     )
 
 
+def check_signal_result(
+    api,
+    asset: str,
+    side: str,
+    entry_price: float,
+    entry_timestamp: str,
+    expiry_candles: int,
+    timeframe: int,
+) -> str:
+    """Verifica el resultado de una señal consultando velas futuras."""
+    try:
+        target_open = int(float(entry_timestamp)) + (expiry_candles * timeframe)
+        target_close = target_open + timeframe
+        if time.time() < target_close:
+            return "PENDIENTE"
+
+        raw_candles = api.get_candles(asset, timeframe, 3, target_close) or []
+        if not raw_candles:
+            return "PENDIENTE"
+
+        sorted_candles = sorted(raw_candles, key=lambda item: item["from"])
+        target_candle = next(
+            (item for item in sorted_candles if int(float(item["from"])) == target_open),
+            sorted_candles[-1],
+        )
+        if int(float(target_candle["from"])) < target_open:
+            return "PENDIENTE"
+
+        expiry_price = float(target_candle["close"])
+        if side == "CALL":
+            return "WIN" if expiry_price > entry_price else "LOSS"
+        if side == "PUT":
+            return "WIN" if expiry_price < entry_price else "LOSS"
+        return "DESCONOCIDO"
+    except Exception as exc:
+        return f"ERROR: {exc}"
+
+
 def append_signal_csv(path: str, row: dict[str, str]) -> None:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -129,70 +173,88 @@ def run_signal_bot(config: SignalBotConfig, strategy: StrategyConfig, model: Opt
     print(
         f"Bot de senales iniciado: asset={config.asset} balance={config.balance} "
         f"tf={timeframe_label(config.timeframe)} confirmacion={timeframe_label(config.confirmation_timeframe)} "
-        f"contexto={timeframe_label(config.context_timeframe)} min_score={config.min_score}"
+        f"contexto={timeframe_label(config.context_timeframe)} min_model_probability={strategy.min_model_probability} "
+        f"min_score={config.min_score}"
     )
     last_signal_timestamp: Optional[str] = None
     sent = 0
 
     while sent < config.max_signals:
-        candles = fetch_recent_candles(api, config.asset, config.timeframe, config.candle_count)
-        signals = generate_signals(candles, strategy, model)
-        latest_raw = signals[-1] if signals else None
+        try:
+            candles = fetch_recent_candles(api, config.asset, config.timeframe, config.candle_count)
+            signals = generate_signals(candles, strategy, model)
+            latest_raw = signals[-1] if signals else None
 
-        if latest_raw is None or latest_raw.timestamp == last_signal_timestamp:
-            time.sleep(config.poll_seconds)
-            continue
+            if latest_raw is None or latest_raw.timestamp == last_signal_timestamp:
+                time.sleep(config.poll_seconds)
+                continue
 
-        confirmation_candles = fetch_recent_candles(api, config.asset, config.confirmation_timeframe, config.candle_count)
-        context_candles = fetch_recent_candles(api, config.asset, config.context_timeframe, config.candle_count)
-        context_5m = analyze_timeframe(confirmation_candles, strategy, timeframe_label(config.confirmation_timeframe))
-        context_15m = analyze_timeframe(context_candles, strategy, timeframe_label(config.context_timeframe))
-        latest = score_signal(latest_raw, context_5m, context_15m)
+            confirmation_candles = fetch_recent_candles(api, config.asset, config.confirmation_timeframe, config.candle_count)
+            context_candles = fetch_recent_candles(api, config.asset, config.context_timeframe, config.candle_count)
+            context_5m = analyze_timeframe(confirmation_candles, strategy, timeframe_label(config.confirmation_timeframe))
+            context_15m = analyze_timeframe(context_candles, strategy, timeframe_label(config.context_timeframe))
+            latest = score_signal(latest_raw, context_5m, context_15m)
 
-        if latest.score is not None and latest.score < config.min_score:
+            if latest.score is not None and latest.score < config.min_score:
+                last_signal_timestamp = latest.timestamp
+                print(
+                    f"Senal descartada por score bajo: {latest.score}/100 {latest.side} "
+                    f"prob={latest.probability if latest.probability is not None else 'N/A'} "
+                    f"min_score={config.min_score} {latest.context}"
+                )
+                time.sleep(config.poll_seconds)
+                continue
+
             last_signal_timestamp = latest.timestamp
-            print(f"Senal descartada por score bajo: {latest.score}/100 {latest.side} {latest.context}")
-            time.sleep(config.poll_seconds)
-            continue
+            sent += 1
+            message = format_signal_message(
+                asset=config.asset,
+                side=latest.side,
+                price=latest.price,
+                signal_timestamp=latest.timestamp,
+                expiry_candles=config.expiry_candles,
+                timeframe=config.timeframe,
+                probability=latest.probability,
+                score=latest.score,
+                strength=latest.strength,
+                context=latest.context,
+                reason=latest.reason,
+            )
+            probability = "" if latest.probability is None else f"{latest.probability:.6f}"
+            append_signal_csv(
+                config.output_csv,
+                {
+                    "timestamp": latest.timestamp,
+                    "asset": config.asset,
+                    "side": latest.side,
+                    "price": f"{latest.price:.6f}",
+                    "probability": probability,
+                    "score": "" if latest.score is None else str(latest.score),
+                    "strength": latest.strength or "",
+                    "expiry_candles": str(config.expiry_candles),
+                    "timeframe": str(config.timeframe),
+                    "context": latest.context or "",
+                    "reason": latest.reason,
+                    "manual_result": "",
+                },
+            )
 
-        last_signal_timestamp = latest.timestamp
-        sent += 1
-        message = format_signal_message(
-            asset=config.asset,
-            side=latest.side,
-            price=latest.price,
-            signal_timestamp=latest.timestamp,
-            expiry_candles=config.expiry_candles,
-            timeframe=config.timeframe,
-            probability=latest.probability,
-            score=latest.score,
-            strength=latest.strength,
-            context=latest.context,
-            reason=latest.reason,
-        )
-        probability = "" if latest.probability is None else f"{latest.probability:.6f}"
-        append_signal_csv(
-            config.output_csv,
-            {
-                "timestamp": latest.timestamp,
-                "asset": config.asset,
-                "side": latest.side,
-                "price": f"{latest.price:.6f}",
-                "probability": probability,
-                "score": "" if latest.score is None else str(latest.score),
-                "strength": latest.strength or "",
-                "expiry_candles": str(config.expiry_candles),
-                "timeframe": str(config.timeframe),
-                "context": latest.context or "",
-                "reason": latest.reason,
-                "manual_result": "",
-            },
-        )
-
-        print(message.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", ""))
-        if telegram is not None:
-            send_telegram_message(telegram, message)
-            print("Senal enviada a Telegram.")
+            plain_message = message.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "")
+            print(safe_console_text(plain_message))
+            if telegram is not None:
+                try:
+                    send_telegram_message(telegram, message)
+                    print("Senal enviada a Telegram.")
+                except Exception as exc:
+                    print(f"No se pudo enviar la senal a Telegram: {exc}")
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            print(f"Error temporal del bot de senales: {exc}. Reintentando...")
+            try:
+                api.connect()
+            except Exception as reconnect_exc:
+                print(f"No se pudo reconectar a IQ Option: {reconnect_exc}")
 
         time.sleep(config.poll_seconds)
 

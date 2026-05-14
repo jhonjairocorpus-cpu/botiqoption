@@ -22,7 +22,7 @@ def load_env_file(path: str = ".env") -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        key = key.strip()
+        key = key.strip().lstrip("\ufeff")
         value = value.strip().strip('"').strip("'")
         os.environ.setdefault(key, value)
 
@@ -126,7 +126,7 @@ def fetch_iqoption_candles(asset: str, timeframe: int, count: int, balance: str 
 
     while remaining > 0:
         batch_count = min(batch_size, remaining)
-        batch = api.get_candles(asset, timeframe, batch_count, end_time)
+        batch = api.get_candles(asset, timeframe, batch_count, end_time) or []
         if not batch:
             break
 

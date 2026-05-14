@@ -49,7 +49,7 @@ def connect_iqoption(balance: str):
 
 
 def fetch_recent_candles(api, asset: str, timeframe: int, count: int) -> list[Candle]:
-    raw = api.get_candles(asset, timeframe, count, time.time())
+    raw = api.get_candles(asset, timeframe, count, time.time()) or []
     raw = sorted(raw, key=lambda item: item["from"])
     return [
         Candle(
@@ -137,9 +137,18 @@ def run_live_trader(config: LiveConfig, strategy: StrategyConfig, model: Optiona
     profit = 0.0
 
     while trades < config.max_trades and profit > -abs(config.stop_loss) and profit < abs(config.stop_win):
-        candles = fetch_recent_candles(api, config.asset, config.timeframe, config.candle_count)
-        signals = generate_signals(candles, strategy, model)
-        latest = signals[-1] if signals else None
+        try:
+            candles = fetch_recent_candles(api, config.asset, config.timeframe, config.candle_count)
+            signals = generate_signals(candles, strategy, model)
+            latest = signals[-1] if signals else None
+        except Exception as exc:
+            print(f"Error consultando velas: {exc}. Reintentando...")
+            try:
+                api.connect()
+            except Exception as reconnect_exc:
+                print(f"No se pudo reconectar a IQ Option: {reconnect_exc}")
+            time.sleep(config.poll_seconds)
+            continue
 
         if latest is None or latest.timestamp == last_signal_timestamp:
             time.sleep(config.poll_seconds)
@@ -165,7 +174,17 @@ def run_live_trader(config: LiveConfig, strategy: StrategyConfig, model: Optiona
             time.sleep(config.poll_seconds)
             continue
 
-        ok, order_id = api.buy(config.amount, config.asset, action, expiration_minutes)
+        try:
+            ok, order_id = api.buy(config.amount, config.asset, action, expiration_minutes)
+        except Exception as exc:
+            print(f"No se pudo enviar la orden: {exc}")
+            try:
+                api.connect()
+            except Exception as reconnect_exc:
+                print(f"No se pudo reconectar a IQ Option: {reconnect_exc}")
+            time.sleep(config.poll_seconds)
+            continue
+
         if not ok:
             print(f"Orden rechazada: {order_id}")
             time.sleep(config.poll_seconds)

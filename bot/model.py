@@ -13,6 +13,11 @@ class LogisticModel:
     scales: List[float]
 
     def predict_proba(self, features: Sequence[float]) -> float:
+        if len(features) != len(self.weights) or len(features) != len(self.means) or len(features) != len(self.scales):
+            raise ValueError(
+                "El numero de features no coincide con el modelo "
+                f"({len(features)} recibidas, {len(self.weights)} esperadas)."
+            )
         normalized = [(value - mean) / scale for value, mean, scale in zip(features, self.means, self.scales)]
         score = self.bias + sum(weight * value for weight, value in zip(self.weights, normalized))
         return 1.0 / (1.0 + math.exp(-max(-50.0, min(50.0, score))))

@@ -1,4 +1,5 @@
 import argparse
+import csv
 
 from .backtest import run_backtest
 from .data import fetch_iqoption_candles, generate_sample_candles, read_candles_csv, write_candles_csv
@@ -89,6 +90,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     telegram_test = subparsers.add_parser("telegram-test", help="Envia un mensaje de prueba a Telegram.")
     telegram_test.add_argument("--message", default="Bot de senales conectado correctamente.")
+
+    check_results = subparsers.add_parser("check-results", help="Verifica resultados de señales en CSV y actualiza manual_result.")
+    check_results.add_argument("--csv", required=True, help="Archivo CSV de señales.")
+    check_results.add_argument("--balance", default="PRACTICE", choices=("PRACTICE", "REAL"))
 
     return parser
 
@@ -242,6 +247,43 @@ def command_telegram_test(args: argparse.Namespace) -> None:
     print("Mensaje de prueba enviado a Telegram.")
 
 
+def command_check_results(args: argparse.Namespace) -> None:
+    from .signals import check_signal_result
+
+    api = connect_iqoption(args.balance)
+    rows = []
+    fieldnames = None
+    with open(args.csv, "r", newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        if not reader.fieldnames:
+            raise ValueError(f"El CSV no tiene encabezados: {args.csv}")
+        fieldnames = list(reader.fieldnames)
+        if "manual_result" not in fieldnames:
+            fieldnames.append("manual_result")
+
+        for row in reader:
+            row.setdefault("manual_result", "")
+            if row["manual_result"].strip() == "":
+                result = check_signal_result(
+                    api,
+                    row["asset"],
+                    row["side"],
+                    float(row["price"]),
+                    row["timestamp"],
+                    int(row["expiry_candles"]),
+                    int(row["timeframe"]),
+                )
+                row["manual_result"] = result
+                print(f"Senal {row['timestamp']} {row['side']} {row['price']}: {result}")
+            rows.append(row)
+
+    with open(args.csv, "w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"Resultados actualizados en {args.csv}")
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -264,5 +306,7 @@ def main() -> None:
         command_signals(args)
     elif args.command == "telegram-test":
         command_telegram_test(args)
+    elif args.command == "check-results":
+        command_check_results(args)
     else:
         parser.error(f"Comando no soportado: {args.command}")
